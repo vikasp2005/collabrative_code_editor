@@ -1,58 +1,93 @@
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 import socket
-import threading
-import tkinter as tk
-from tkinter import scrolledtext
+import json
 
-# Function to handle incoming results/updates from the server
-def receive_updates(client_socket, output_area):
-    while True:
-        try:
-            result = client_socket.recv(1024).decode('utf-8')
-            if not result:
-                break
-            # Clear the previous output and display the new result
-            output_area.config(state=tk.NORMAL)
-            output_area.delete(1.0, tk.END)  # Clear previous content
-            output_area.insert(tk.END, f"Result: {result}\n")
-            output_area.config(state=tk.DISABLED)
-        except:
-            break
+app = Flask(__name__)
+app.secret_key = 'your_secret_key'
 
-def start_client():
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect(('localhost', 1000))
+# Route for the home page
+@app.route('/')
+def home():
+    if 'username' in session:
+        return redirect(url_for('editor'))
+    return render_template("home.html")
 
-    # Create the GUI
-    root = tk.Tk()
-    root.title("Collaborative Code Editor")
+@app.route('/register', methods=['GET','POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
 
-    # Create a Text Area for code input (multiple lines)
-    code_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=60, height=15)
-    code_area.pack(padx=10, pady=10)
+        # Simulate sending data to the server and receiving a response.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect(('localhost', 6000))
+            data = json.dumps({"action": "register", "username": username, "password": password})
+            client_socket.sendall(data.encode())
+            response = client_socket.recv(1024).decode()
 
-    # Create a button to run the code
-    run_button = tk.Button(root, text="Run Code", height=2, width=10)
+        if "success" in response:
+            return jsonify({"status": "success", "message": "Registration successful!"})
+        else:
+            return jsonify({"status": "error", "message": "Registration failed."})
 
-    def send_code():
-        code = code_area.get("1.0", tk.END).strip()
-        if code:
-            client_socket.sendall(code.encode('utf-8'))
 
-    run_button.config(command=send_code)
-    run_button.pack(pady=10)
+    return render_template('register.html')
 
-    # Create a Text Area to display results (output), placed at the bottom
-    output_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=60, height=10)
-    output_area.pack(padx=10, pady=10)
-    output_area.config(state=tk.DISABLED)  # Disable editing directly in this area
+@app.route('/login', methods=['GET','POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
 
-    # Start a thread to receive updates/results from the server
-    receive_thread = threading.Thread(target=receive_updates, args=(client_socket, output_area))
-    receive_thread.daemon = True
-    receive_thread.start()
+        # Send login data to the socket server
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect(('localhost', 6000))
+            data = json.dumps({"action": "login", "username": username, "password": password})
+            client_socket.sendall(data.encode())
+            response = client_socket.recv(1024).decode()
 
-    # Run the GUI main loop
-    root.mainloop()
+        if "success" in response:
+            return jsonify({"status": "success", "message": "Login successful!"})
+        else:
+            return jsonify({"status": "error", "message": "Invalid credentials."})
+
+
+    return render_template('login.html')
+
+@app.route('/editor', methods=['GET', 'POST'])
+def editor():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        data = request.get_json()  # Read JSON data
+        code = data.get('code')
+        language = data.get('language')
+
+        if not code:
+            return jsonify(error="Code is missing."), 400
+
+        # Send code and language to the server
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+          client_socket.connect(('localhost', 6000))
+          send_data = json.dumps({"action": "execute_code", "code": code, "language": language})
+          client_socket.sendall(send_data.encode())
+          result = client_socket.recv(4096).decode()
+
+        return jsonify(result=result)
+
+    return render_template('editor.html')
+
+
+
+    
+
+# Logout route
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    flash("You have been logged out.", "info")
+    return redirect(url_for('home'))
 
 if __name__ == "__main__":
-    start_client()
+    app.run(debug=True)

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Collaborative Code Editor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/theme/material-darker.min.css">
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f3f4f6; display: flex; flex-direction: column; align-items: center; }
+        #editorForm, #output { margin-top: 20px; width: 60%; }
+        .CodeMirror { height: 300px; border: 1px solid #ddd; font-size: 16px; }
+        select, button { padding: 8px 12px; margin-top: 10px; }
+        pre { background-color: #333; color: #fff; padding: 15px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <h2>Collaborative Code Editor</h2>
+    
+    <form id="editorForm">
+        <label for="language">Select Language:</label>
+        <select name="language" id="language">
+            <option value="python">Python</option>
+            <option value="c">C</option>
+            <option value="cpp">C++</option>
+            <option value="java">Java</option>
+        </select><br>
+        
+        <textarea id="code" placeholder="Write your code here..."></textarea><br>
+        <button type="submit">Run Code</button>
+    </form>
+    
+    <pre id="output">Output will be displayed here...</pre>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/python/python.min.js"></script>
+    <script>
+        // Initialize CodeMirror
+        const editor = CodeMirror.fromTextArea(document.getElementById("code"), {
+            lineNumbers: true,
+            theme: "material-darker",
+            mode: "text/x-java",
+            tabSize: 4,
+            indentWithTabs: true,
+        });
+
+        document.getElementById('language').addEventListener('change', function() {
+            const mode = {
+                python: "python",
+                c: "text/x-csrc",
+                cpp: "text/x-c++src",
+                java: "text/x-java"
+            }[this.value];
+            editor.setOption("mode", mode);
+        });
+
+        document.getElementById('editorForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const code = editor.getValue();
+            const language = document.getElementById('language').value;
+            const outputElement = document.getElementById('output');
+            
+            // Clear previous output
+            outputElement.textContent = "Running code...";
+    
+            // Send code and language to server with proper headers
+            try {
+                const response = await fetch("/editor", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ code, language })
+                });
+    
+                const result = await response.json();
+                outputElement.textContent = result.result || "No output returned.";
+            } catch (error) {
+                outputElement.textContent = "Error running code.";
+                console.error("Code execution error:", error);
+            }
+        });
+    </script>
+    
+</body>
+</html>

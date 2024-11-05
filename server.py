@@ -2,64 +2,154 @@ import socket
 import threading
 import sys
 import io
+import json
+import os
+import re
+import tempfile
+import subprocess
+from pymongo import MongoClient
+from werkzeug.security import generate_password_hash, check_password_hash
 
-clients = []
-
-# Function to execute the received code
-def execute_code(code):
+# MongoDB connection setup
+def connect_to_db():
     try:
-        # Redirect stdout to capture print statements
-        old_stdout = sys.stdout
-        redirected_output = sys.stdout = io.StringIO()
+        client = MongoClient("mongodb+srv://cn:cn@cluster0.dicdy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+        db = client['code_editor']
+        print("DB connected successfully")
+        return db
+    except Exception as e:
+        print(f"Failed to connect to DB: {e}")
+        sys.exit(1)  # Exit if the DB connection fails
 
-        # Use exec to run the code
-        exec(code)
+# Initialize database
+db = connect_to_db()
+users_collection = db['users']
 
-        # Get the output
-        sys.stdout = old_stdout
-        output = redirected_output.getvalue()
-        return output if output else "Code executed successfully with no output."
+
+
+def execute_java_code(code):
+    # Write the Java code to a temporary file
+    file_path = "/tmp/TempProgram.java"
+    with open(file_path, 'w') as java_file:
+        java_file.write(code)
+
+    # Locate the class that contains the main method
+    class_with_main = re.search(
+        r'class\s+(\w+)[\s\S]*?public\s+static\s+void\s+main\s*\(\s*String\s*\[\]\s*args\s*\)',
+        code
+    )
+    if not class_with_main:
+        return "Error: No public class with main method found in Java code."
     
+    class_name = class_with_main.group(1)
+
+    # Compile the Java code
+    compile_result = subprocess.run(["javac", file_path], capture_output=True, text=True)
+    if compile_result.returncode != 0:
+        return f"Compilation error: {compile_result.stderr}"
+
+    # Execute the Java code
+    run_result = subprocess.run(["java", "-cp", "/tmp", class_name], capture_output=True, text=True)
+    if run_result.returncode != 0:
+        return f"Execution error: {run_result.stderr}"
+    
+    # Clean up by removing the compiled .class file
+    os.remove(f"/tmp/{class_name}.class")
+    return run_result.stdout
+
+
+
+
+# Function to execute code based on language
+def execute_code(code, language):
+    try:
+        if language == "python":
+            # Python code execution
+            old_stdout = sys.stdout
+            redirected_output = sys.stdout = io.StringIO()
+            exec(code)
+            sys.stdout = old_stdout
+            return redirected_output.getvalue() or "Code executed successfully with no output."
+        
+        elif language == "c":
+            # C code execution
+            with open("temp.c", "w") as f:
+                f.write(code)
+            compile_process = subprocess.run(["gcc", "temp.c", "-o", "temp_c_exec"], capture_output=True, text=True)
+            if compile_process.returncode != 0:
+                return compile_process.stderr
+            run_process = subprocess.run(["./temp_c_exec"], capture_output=True, text=True)
+            return run_process.stdout if run_process.returncode == 0 else run_process.stderr
+        
+        elif language == "cpp":
+            # C++ code execution
+            with open("temp.cpp", "w") as f:
+                f.write(code)
+            compile_process = subprocess.run(["g++", "temp.cpp", "-o", "temp_cpp_exec"], capture_output=True, text=True)
+            if compile_process.returncode != 0:
+                return compile_process.stderr
+            run_process = subprocess.run(["./temp_cpp_exec"], capture_output=True, text=True)
+            return run_process.stdout if run_process.returncode == 0 else run_process.stderr
+        
+        elif language == "java":
+            return execute_java_code(code)
+
     except Exception as e:
         return f"Error: {str(e)}"
 
-# Function to handle client communication
-def handle_client(client_socket, client_address):
+
+
+# In the `handle_client` function, update to accept language and pass it to `execute_code`
+def handle_client(client_socket):
     while True:
         try:
-            # Receive the code from the client
-            code = client_socket.recv(1024).decode('utf-8')
-            if not code:
+            data = client_socket.recv(1024).decode('utf-8')
+            if not data:
                 break
-            print(f"Received code from {client_address}:\n{code}")
+            request = json.loads(data)
 
-            # Execute the code and get the result
-            result = execute_code(code)
+            if request['action'] == "register":
+                response = register_user(request['username'], request['password'])
+            elif request['action'] == "login":
+                response = login_user(request['username'], request['password'])
+            elif request['action'] == "execute_code":
+                language = request.get("language", "python")  # Default to Python if not specified
+                response = execute_code(request['code'], language)
+            else:
+                response = "Invalid action."
 
-            # Send the result back to the client
-            client_socket.sendall(result.encode('utf-8'))
+            client_socket.sendall(response.encode('utf-8'))
 
         except:
             break
-
-    print(f"Client {client_address} disconnected.")
-    clients.remove(client_socket)
     client_socket.close()
 
-# Function to start the server
+# User registration
+def register_user(username, password):
+    if users_collection.find_one({"username": username}):
+        return "Username already exists."
+
+    hashed_password = generate_password_hash(password)
+    users_collection.insert_one({"username": username, "password": hashed_password})
+    return "Registration successful."
+
+# User login
+def login_user(username, password):
+    user = users_collection.find_one({"username": username})
+    if user and check_password_hash(user["password"], password):
+        return "Login successful."
+    return "Invalid credentials."
+
+# Start server
 def start_server():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(('localhost', 1000))
-    server_socket.listen(5)  # Up to 5 clients can connect simultaneously
-    print("Server is listening on port 1000...")
+    server_socket.bind(('localhost', 6000))
+    server_socket.listen(5)
+    print("Server is listening on port 6000...")
 
     while True:
-        client_socket, client_address = server_socket.accept()
-        print(f"New connection from {client_address}")
-        clients.append(client_socket)
-
-        # Start a new thread to handle the client
-        client_thread = threading.Thread(target=handle_client, args=(client_socket, client_address))
+        client_socket, _ = server_socket.accept()
+        client_thread = threading.Thread(target=handle_client, args=(client_socket,))
         client_thread.start()
 
 if __name__ == "__main__":
