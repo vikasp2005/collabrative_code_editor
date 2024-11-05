@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Code Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            text-align: center;
+            max-width: 800px;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        h2 {
+            color: #3a6ea5;
+        }
+        p {
+            font-size: 1.1em;
+            line-height: 1.6;
+        }
+        .auth-links {
+            margin-top: 20px;
+        }
+        .auth-links a {
+            text-decoration: none;
+            color: #3a6ea5;
+            margin: 0 15px;
+            font-weight: bold;
+            transition: color 0.3s;
+        }
+        .auth-links a:hover {
+            color: #285a8b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Welcome to the Collaborative Code Editor</h2>
+        <p>A powerful and real-time collaborative code editor designed for seamless team collaboration. Whether you’re working on a project, debugging code, or brainstorming, you can edit and see changes instantly, all from the comfort of your browser.</p>
+        <p>Log in or register to get started, share code with your team, and work together effortlessly. Happy coding!</p>
+        <div class="auth-links">
+            <a href="{{ url_for('login') }}">Login</a> |
+            <a href="{{ url_for('register') }}">Register</a>
+        </div>
+    </div>
+</body>
+</html>
