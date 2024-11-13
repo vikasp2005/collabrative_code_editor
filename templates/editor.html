@@ -7,10 +7,18 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/theme/material-darker.min.css">
     <style>
         body { font-family: Arial, sans-serif; background-color: #f3f4f6; display: flex; flex-direction: column; align-items: center; }
-        #editorForm, #output { margin-top: 20px; width: 60%; }
+        #editorForm, #output, #sidebar, #messageContainer { margin-top: 20px; width: 60%; }
         .CodeMirror { height: 300px; border: 1px solid #ddd; font-size: 16px; }
         select, button { padding: 8px 12px; margin-top: 10px; }
         pre { background-color: #333; color: #fff; padding: 15px; border-radius: 5px; }
+        #sidebar { margin-top: 20px; width: 60%; padding: 10px; background-color: #f0f0f0; border-radius: 8px; }
+        #sidebar div { cursor: pointer; padding: 5px; border-bottom: 1px solid #ddd; }
+        #sidebar div:hover { background-color: #ddd; }
+        #popup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); }
+        #popupContent { margin: 100px auto; padding: 20px; background: #fff; width: 300px; border-radius: 8px; text-align: center; }
+        #messageContainer { display: flex; justify-content: center; font-weight: bold; }
+        .success { color: green; }
+        .error { color: red; }
     </style>
 </head>
 <body>
@@ -28,10 +36,27 @@
         
         <textarea id="code" placeholder="Write your code here..."></textarea><br>
         <button type="submit">Run Code</button>
+        <button type="button" id="saveBtn">Save Program</button>
     </form>
     
     <pre id="output">Output will be displayed here...</pre>
     
+    <div id="sidebar">
+        <h3>Saved Programs</h3>
+        <!-- Programs will be listed here -->
+    </div>
+
+    <div id="popup">
+        <div id="popupContent">
+            <label for="programName">Enter Program Name:</label><br>
+            <input type="text" id="programName" /><br><br>
+            <button id="confirmSave">Save</button>
+            <button id="cancelSave">Cancel</button>
+        </div>
+    </div>
+
+    <div id="messageContainer"></div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/clike/clike.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/python/python.min.js"></script>
@@ -45,6 +70,7 @@
             indentWithTabs: true,
         });
 
+        // Handle language change
         document.getElementById('language').addEventListener('change', function() {
             const mode = {
                 python: "python",
@@ -55,6 +81,7 @@
             editor.setOption("mode", mode);
         });
 
+        // Run code
         document.getElementById('editorForm').addEventListener('submit', async function(event) {
             event.preventDefault();
             
@@ -62,10 +89,8 @@
             const language = document.getElementById('language').value;
             const outputElement = document.getElementById('output');
             
-            // Clear previous output
             outputElement.textContent = "Running code...";
-    
-            // Send code and language to server with proper headers
+
             try {
                 const response = await fetch("/editor", {
                     method: "POST",
@@ -74,7 +99,7 @@
                     },
                     body: JSON.stringify({ code, language })
                 });
-    
+
                 const result = await response.json();
                 outputElement.textContent = result.result || "No output returned.";
             } catch (error) {
@@ -82,7 +107,106 @@
                 console.error("Code execution error:", error);
             }
         });
+
+        // Display popup for saving
+        document.getElementById('saveBtn').addEventListener('click', function() {
+            document.getElementById('popup').style.display = 'block';
+        });
+
+        // Save program
+        document.getElementById('confirmSave').addEventListener('click', async function() {
+            const programName = document.getElementById('programName').value;
+            document.getElementById('popup').style.display = 'none';
+
+            if (programName) {
+                const code = editor.getValue();
+                const language = document.getElementById('language').value;
+
+                try {
+                    const response = await fetch("/save_program", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        
+                        body: JSON.stringify({
+                            code,
+                            language,
+                            name: programName
+                        })
+                    });
+
+                    const result = await response.json();
+                    showMessage(result.message, result.status === "success");
+                    loadSavedPrograms();
+                } catch (error) {
+                    showMessage("Error saving program.", false);
+                    console.error("Error saving program:", error);
+                }
+            } else {
+                showMessage("Program name cannot be empty.", false);
+            }
+        });
+
+        // Hide popup on cancel
+        document.getElementById('cancelSave').addEventListener('click', function() {
+            document.getElementById('popup').style.display = 'none';
+        });
+
+        // Show success or error message
+        function showMessage(message, isSuccess) {
+            const messageContainer = document.getElementById("messageContainer");
+            messageContainer.textContent = message;
+            messageContainer.className = isSuccess ? "success" : "error";
+            setTimeout(() => {
+                messageContainer.textContent = ""; // Clear the message after 3 seconds
+            }, 3000);
+        }
+
+        // Load saved programs into the sidebar
+        async function loadSavedPrograms() {
+            try {
+                const response = await fetch("/fetch_programs");
+                const program = await response.json();
+                const programs = program.programs;
+                console.log(programs);
+                const sidebar = document.getElementById("sidebar");
+                sidebar.innerHTML = '<h3>Saved Programs</h3>'; // Clear the sidebar and add heading
+
+                if (programs.length === 0) {
+                    sidebar.innerHTML += "No programs found.";
+                } else {
+                    programs.forEach(program => {
+                        const programItem = document.createElement("div");
+                        programItem.textContent = `${program.name} (${program.language})`;
+                        sidebar.appendChild(programItem);
+                    });
+                }
+            } catch (error) {
+                console.error("Error fetching programs:", error);
+                document.getElementById("sidebar").innerHTML = "Error fetching programs.";
+            }
+        }
+
+        // Load program into editor
+        function loadProgramIntoEditor(code, language) {
+            editor.setValue(code);
+            document.getElementById('language').value = language;
+            editor.setOption("mode", getLanguageMode(language));
+        }
+
+        // Get the language mode for CodeMirror
+        function getLanguageMode(language) {
+            return {
+                python: "python",
+                c: "text/x-csrc",
+                cpp: "text/x-c++src",
+                java: "text/x-java"
+            }[language];
+        }
+
+        // Load saved programs when the page is loaded
+        document.addEventListener("DOMContentLoaded", loadSavedPrograms);
     </script>
-    
 </body>
 </html>

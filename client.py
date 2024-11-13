@@ -33,7 +33,8 @@ def register():
 
     return render_template('register.html')
 
-@app.route('/login', methods=['GET','POST'])
+
+@app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
@@ -47,12 +48,14 @@ def login():
             response = client_socket.recv(1024).decode()
 
         if "success" in response:
+            # Set a session variable to indicate the user is logged in
+            session['username'] = username
             return jsonify({"status": "success", "message": "Login successful!"})
         else:
             return jsonify({"status": "error", "message": "Invalid credentials."})
 
-
     return render_template('login.html')
+
 
 @app.route('/editor', methods=['GET', 'POST'])
 def editor():
@@ -80,7 +83,73 @@ def editor():
 
 
 
-    
+
+# Save the program by sending code to the server
+@app.route('/save_program', methods=['POST'])
+def save_program():
+    if 'username' not in session:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    data = request.get_json()
+    file_name = data.get('name')
+    code = data.get('code')
+    language = data.get('language')
+    username = session['username']
+
+    # Send the code to the server via socket for saving
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+        client_socket.connect(('localhost', 6000))
+        send_data = json.dumps({
+            "action": "save_code",
+            "username": username,
+            "file_name": file_name,
+            "code": code,
+            "language": language
+        })
+        client_socket.sendall(send_data.encode())
+        response = client_socket.recv(1024).decode()
+
+    return jsonify({"status": "success", "message": response})
+
+# Fetch saved programs from the server
+@app.route('/fetch_programs', methods=['GET'])
+def fetch_programs():
+    # Check if user is authenticated
+    if 'username' not in session:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    username = session['username']
+
+    # Send the request to the server to fetch the programs
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect(('localhost', 6000))
+
+            # Prepare and send data
+            send_data = json.dumps({
+                "action": "fetch_codes",
+                "username": username
+            })
+            client_socket.sendall(send_data.encode())
+
+            # Receive response from the server
+            programs_data = client_socket.recv(4096).decode()
+            # If no data received or empty response
+            if not programs_data:
+                return jsonify({"status": "error", "message": "No data received from server"}), 500
+
+            # Parse and return the JSON response
+            try:
+                programs_list = json.loads(programs_data)
+                # Convert each sublist into a dictionary with keys "name" and "language"
+                programs = [{"name": program[0], "language": program[1]} for program in programs_list]
+                return jsonify({"status": "success", "programs": programs})
+            except json.JSONDecodeError:
+                return jsonify({"status": "error", "message": "Failed to decode server response"}), 500
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 # Logout route
 @app.route('/logout')
