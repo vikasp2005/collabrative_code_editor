@@ -151,6 +151,52 @@ def fetch_programs():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+
+
+# Fetch saved programs from the server
+@app.route('/fetch_code', methods=['POST'])
+def fetch_codes():
+    # Check if user is authenticated
+    if 'username' not in session:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+    
+
+    data = request.get_json()
+    file_name = data.get('name')
+    username = session['username']
+
+    # Send the request to the server to fetch the programs
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect(('localhost', 6000))
+
+            # Prepare and send data
+            send_data = json.dumps({
+                "action": "fetch_codes_data",
+                "username": username,
+                "name" : file_name
+            })
+            client_socket.sendall(send_data.encode())
+
+            # Receive response from the server
+            programs_data = client_socket.recv(4096).decode()
+            # If no data received or empty response
+            if not programs_data:
+                return jsonify({"status": "error", "message": "No data received from server"}), 500
+
+            # Parse and return the JSON response
+            try:
+                programs_list = json.loads(programs_data)
+                return jsonify({"status": "success", "programs": programs_list})
+            except json.JSONDecodeError:
+                return jsonify({"status": "error", "message": "Failed to decode server response"}), 500
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
+
 # Logout route
 @app.route('/logout')
 def logout():

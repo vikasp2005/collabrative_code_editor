@@ -169,7 +169,6 @@
                 const response = await fetch("/fetch_programs");
                 const program = await response.json();
                 const programs = program.programs;
-                console.log(programs);
                 const sidebar = document.getElementById("sidebar");
                 sidebar.innerHTML = '<h3>Saved Programs</h3>'; // Clear the sidebar and add heading
 
@@ -179,6 +178,7 @@
                     programs.forEach(program => {
                         const programItem = document.createElement("div");
                         programItem.textContent = `${program.name} (${program.language})`;
+                        programItem.onclick = () => loadProgramIntoEditor(program.name);
                         sidebar.appendChild(programItem);
                     });
                 }
@@ -188,13 +188,29 @@
             }
         }
 
-        // Load program into editor
-        function loadProgramIntoEditor(code, language) {
-            editor.setValue(code);
-            document.getElementById('language').value = language;
-            editor.setOption("mode", getLanguageMode(language));
+         // Load the selected program into the editor
+         async function loadProgramIntoEditor(programName) {
+            try {
+                const response = await fetch(`/fetch_code`,{
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        
+                        body: JSON.stringify({
+                            name: programName
+                        })
+                    });
+                const response_data = await response.json();
+                const { code, language } = response_data.programs;
+                editor.setValue(code);
+                document.getElementById('language').value = language;
+                editor.setOption("mode", getLanguageMode(language));
+            } catch (error) {
+                showMessage("Error loading program.", false);
+                console.error("Error loading program:", error);
+            }
         }
-
         // Get the language mode for CodeMirror
         function getLanguageMode(language) {
             return {

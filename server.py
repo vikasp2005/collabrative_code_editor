@@ -146,6 +146,15 @@ def fetch_saved_programs(username):
     file_names = [[program["file_name"],program["language"]] for program in programs]  # Collect file names in a list
     return json.dumps(file_names)  # Return as JSON string
 
+
+
+def fetch_saved_code(username,name):
+    user_collection = db[username]
+    programs = user_collection.find({"file_name":name}, {"_id": 0, "code": 1,"language":1})# Only retrieve file names
+    code_data = programs[0]
+    return json.dumps(code_data)  # Return as JSON string
+
+
 # Handle client connections
 def handle_client(client_socket):
     while True:
@@ -166,6 +175,8 @@ def handle_client(client_socket):
                 response = save_code(request['username'], request['file_name'], request['code'], request['language'])
             elif request['action'] == "fetch_codes":
                 response = fetch_saved_programs(request['username'])
+            elif request['action'] == "fetch_codes_data":
+                response = fetch_saved_code(request['username'],request["name"])
             else:
                 response = "Invalid action."
 
